@@ -91,7 +91,7 @@ def build_discriminator():
     return Model(image, validity)
 
 # Display images
-def display_images():
+def display_images(epoch):
     r, c = 4,4
     noise = np.random.normal(0, 1, (r * c,latent_dimensions))
     generated_images = generator.predict(noise)
@@ -106,7 +106,7 @@ def display_images():
             axs[i,j].imshow(generated_images[count, :,:,])
             axs[i,j].axis('off')
             count += 1
-    plt.show()
+    plt.savefig('images_at_epoch_{:04d}.png'.format(epoch))
     plt.close()
 
 # Build and compile the discriminator
@@ -141,24 +141,45 @@ valid += 0.05 * np.random.random(valid.shape)
 fake = np.zeros((batch_size, 1))
 fake += 0.05 * np.random.random(fake.shape)
 
+# Lists to keep track of loss
+discriminator_losses = []
+generator_losses = []
+
 # Begin training
-for epoch in range(num_epochs):
-    # Select a random half batch of images
-    index = np.random.randint(0, X.shape[0], batch_size)
-    images = X[index]
+with open('training_log.txt', 'w') as f:
+    for epoch in range(num_epochs):
+        # Select a random half batch of images
+        index = np.random.randint(0, X.shape[0], batch_size)
+        images = X[index]
 
-    # Sample noise and generate a half batch of new images
-    noise = np.random.normal(0, 1, (batch_size, latent_dimensions))
-    generated_images = generator.predict(noise)
+        # Sample noise and generate a half batch of new images
+        noise = np.random.normal(0, 1, (batch_size, latent_dimensions))
+        generated_images = generator.predict(noise)
 
-    # Train the discriminator on real and fake images, separately
-    discm_loss_real = discriminator.train_on_batch(images, valid)
-    discm_loss_fake = discriminator.train_on_batch(generated_images, fake)
-    discm_loss = 0.5 * np.add(discm_loss_real, discm_loss_fake)
+        # Train the discriminator on real and fake images, separately
+        discm_loss_real = discriminator.train_on_batch(images, valid)
+        discm_loss_fake = discriminator.train_on_batch(generated_images, fake)
+        discm_loss = 0.5 * np.add(discm_loss_real, discm_loss_fake)
 
-    # Train the generator
-    genr_loss = combined_network.train_on_batch(noise, valid)
+        # Train the generator
+        genr_loss = combined_network.train_on_batch(noise, valid)
 
-    # Display progress for each specified interval
-    if epoch % display_interval == 0:
-        display_images()
+        # Save losses
+        discriminator_losses.append(discm_loss[0])
+        generator_losses.append(genr_loss)
+
+        # Display progress for each specified interval
+        if epoch % display_interval == 0:
+            print(f"Epoch: {epoch}, Discriminator Loss: {discm_loss[0]}, Discriminator Accuracy: {100*discm_loss[1]}, Generator Loss: {genr_loss}")
+            f.write(f"Epoch: {epoch}, Discriminator Loss: {discm_loss[0]}, Discriminator Accuracy: {100*discm_loss[1]}, Generator Loss: {genr_loss}\n")
+            display_images(epoch)
+
+# After the training loop, plot the losses
+plt.figure(figsize=(10,5))
+plt.title("Generator and Discriminator Loss During Training")
+plt.plot(generator_losses,label="G")
+plt.plot(discriminator_losses,label="D")
+plt.xlabel("iterations")
+plt.ylabel("Loss")
+plt.legend()
+plt.show()
