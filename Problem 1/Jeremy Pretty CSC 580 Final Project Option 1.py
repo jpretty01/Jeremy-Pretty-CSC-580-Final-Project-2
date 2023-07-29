@@ -7,7 +7,7 @@ from keras.layers import BatchNormalization, Activation, ZeroPadding2D
 from keras.layers import LeakyReLU
 from keras.layers import UpSampling2D, Conv2D
 from keras.models import Sequential, Model
-from keras.optimizers import RMSprop, Adam
+from keras.optimizers import Adam,SGD
 import keras
 
 # Loading the CIFAR10 data
@@ -23,23 +23,23 @@ latent_dimensions = 100
 # Build the generator
 def build_generator():
     model = Sequential()
-
+    
     # Start with a dense layer that takes random noise as input
-    model.add(Dense(256 * 8 * 8, activation="relu", input_dim=latent_dimensions))
-    model.add(Reshape((8, 8, 256)))
-
+    model.add(Dense(128 * 8 * 8, activation="relu", input_dim=latent_dimensions))
+    model.add(Reshape((8, 8, 128)))
+    
     # Upsample to 16x16
-    model.add(UpSampling2D())
-    model.add(Conv2D(256, kernel_size=3, padding="same"))
-    model.add(BatchNormalization(momentum=0.78))
-    model.add(Activation("relu"))
-
-    # Upsample to 32x32
     model.add(UpSampling2D())
     model.add(Conv2D(128, kernel_size=3, padding="same"))
     model.add(BatchNormalization(momentum=0.78))
     model.add(Activation("relu"))
-
+    
+    # Upsample to 32x32
+    model.add(UpSampling2D())
+    model.add(Conv2D(64, kernel_size=3, padding="same"))
+    model.add(BatchNormalization(momentum=0.78))
+    model.add(Activation("relu"))
+    
     # Final output layer with tanh activation function
     model.add(Conv2D(3, kernel_size=3, padding="same"))
     model.add(Activation("tanh"))
@@ -55,25 +55,25 @@ def build_discriminator():
     model = Sequential()
 
     # First Convolutional layer
-    model.add(Conv2D(64, kernel_size=3, strides=2, input_shape=image_shape, padding="same"))
+    model.add(Conv2D(32, kernel_size=3, strides=2, input_shape=image_shape, padding="same"))
     model.add(LeakyReLU(alpha=0.2))
     model.add(Dropout(0.25))
 
     # Second Convolutional layer
-    model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
+    model.add(Conv2D(64, kernel_size=3, strides=2, padding="same"))
     model.add(ZeroPadding2D(padding=((0,1),(0,1))))
     model.add(BatchNormalization(momentum=0.82))
     model.add(LeakyReLU(alpha=0.25))
     model.add(Dropout(0.25))
 
     # Third Convolutional layer
-    model.add(Conv2D(256, kernel_size=3, strides=2, padding="same"))
+    model.add(Conv2D(128, kernel_size=3, strides=2, padding="same"))
     model.add(BatchNormalization(momentum=0.82))
     model.add(LeakyReLU(alpha=0.2))
     model.add(Dropout(0.25))
 
     # Fourth Convolutional layer
-    model.add(Conv2D(512, kernel_size=3, strides=1, padding="same"))
+    model.add(Conv2D(256, kernel_size=3, strides=1, padding="same"))
     model.add(BatchNormalization(momentum=0.8))
     model.add(LeakyReLU(alpha=0.25))
     model.add(Dropout(0.25))
@@ -92,7 +92,7 @@ def build_discriminator():
 
 # Display images
 def display_images(epoch):
-    r, c = 5, 5
+    r, c = 4,4
     noise = np.random.normal(0, 1, (r * c,latent_dimensions))
     generated_images = generator.predict(noise)
 
@@ -111,12 +111,13 @@ def display_images(epoch):
 
 # Build and compile the discriminator
 discriminator = build_discriminator()
-discriminator.compile(loss='binary_crossentropy', optimizer=RMSprop(lr=0.0008, clipvalue=1.0), metrics=['accuracy'])
+discriminator.compile(loss='binary_crossentropy', optimizer=Adam(0.0001,0.5), metrics=['accuracy'])
 
-# Make the discriminator untrainable when we are training the generator.  
+# Make the discriminator untrainable when we are training the generator.  This doesn't effect the discriminator by itself
 discriminator.trainable = False  
 
 # Build and compile the combined network (generator and discriminator).  
+# While training the generator, we'll keep the discriminator's weights fixed.
 generator = build_generator()
 
 z = Input(shape=(latent_dimensions,))
@@ -125,18 +126,18 @@ image = generator(z)
 valid = discriminator(image)
 
 combined_network = Model(z, valid)
-combined_network.compile(loss='binary_crossentropy', optimizer=RMSprop(lr=0.0004, clipvalue=1.0))
+combined_network.compile(loss='binary_crossentropy', optimizer=Adam(0.0002,0.5))
 
-num_epochs=15000
-batch_size=32
+num_epochs=15001
+batch_size=16
 display_interval=2500
 losses=[]
 
 # Rescale -1 to 1
 X = (X / 127.5) - 1.
 
-valid = np.ones((batch_size, 1))
-fake = np.zeros((batch_size, 1))
+valid = np.ones((batch_size, 1)) * 0.9
+fake = np.zeros((batch_size, 1)) * 0.1
 
 # Lists to keep track of loss
 discriminator_losses = []
@@ -144,7 +145,7 @@ generator_losses = []
 
 # Begin training
 with open('training_log.txt', 'w') as f:
-    for epoch in range(num_epochs+1):
+    for epoch in range(num_epochs):
         # Select a random half batch of images
         index = np.random.randint(0, X.shape[0], batch_size)
         images = X[index]
@@ -154,12 +155,8 @@ with open('training_log.txt', 'w') as f:
         generated_images = generator.predict(noise)
 
         # Train the discriminator on real and fake images, separately
-        # Also, add some noise to the labels
-        real_label = valid + 0.05 * np.random.normal(0, 1, (batch_size, 1))
-        fake_label = fake + 0.05 * np.random.normal(0, 1, (batch_size, 1))
-
-        discm_loss_real = discriminator.train_on_batch(images, real_label)
-        discm_loss_fake = discriminator.train_on_batch(generated_images, fake_label)
+        discm_loss_real = discriminator.train_on_batch(images, valid)
+        discm_loss_fake = discriminator.train_on_batch(generated_images, fake)
         discm_loss = 0.5 * np.add(discm_loss_real, discm_loss_fake)
 
         # Train the generator
@@ -170,7 +167,7 @@ with open('training_log.txt', 'w') as f:
         generator_losses.append(genr_loss)
 
         # Display progress for each specified interval
-        if epoch % display_interval == 0 or epoch == num_epochs:
+        if epoch % display_interval == 0 or epoch == num_epochs - 1:
             print(f"Epoch: {epoch}, Discriminator Loss: {discm_loss[0]}, Discriminator Accuracy: {100*discm_loss[1]}, Generator Loss: {genr_loss}")
             f.write(f"Epoch: {epoch}, Discriminator Loss: {discm_loss[0]}, Discriminator Accuracy: {100*discm_loss[1]}, Generator Loss: {genr_loss}\n")
             display_images(epoch)

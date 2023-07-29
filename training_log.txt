@@ -1,6 +1,0 @@
-Epoch: 0, Discriminator Loss: 1.1233009099960327, Discriminator Accuracy: 0.0, Generator Loss: 0.6887616515159607
-Epoch: 2500, Discriminator Loss: -38.69400626420975, Discriminator Accuracy: 0.0, Generator Loss: -34.62371063232422
-Epoch: 5000, Discriminator Loss: -135.6357729434967, Discriminator Accuracy: 0.0, Generator Loss: -10.50339412689209
-Epoch: 7500, Discriminator Loss: -253.59996128082275, Discriminator Accuracy: 0.0, Generator Loss: -79.01191711425781
-Epoch: 10000, Discriminator Loss: -453.76052141189575, Discriminator Accuracy: 0.0, Generator Loss: -21.48102569580078
-Epoch: 12500, Discriminator Loss: -699.2057383060455, Discriminator Accuracy: 0.0, Generator Loss: -130.44561767578125
